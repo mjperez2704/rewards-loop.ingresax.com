@@ -1,0 +1,116 @@
+La plataforma debe incluir:
+
+1. Landing page pública
+- Hero principal con frase:
+  “Convierte clientes ocasionales en clientes recurrentes”
+- Subtítulo:
+  “INGRESAX REWARDS ayuda a negocios locales a crear programas de puntos, cupones, referidos, membresías, WhatsApp Marketing y recompensas digitales.”
+- Botones:
+  “Solicitar demo”
+  “Ver módulos”
+- Sección de beneficios
+- Sección de industrias compatibles
+- Sección de cómo funciona
+- Sección de planes
+- Sección de preguntas frecuentes
+- Footer profesional
+
+2. Dashboard principal
+Debe mostrar:
+- Total de clientes registrados
+- Clientes activos
+- Recompensas emitidas
+- Recompensas canjeadas
+- Ventas atribuidas
+- Tasa de retorno
+- Gráfica de crecimiento mensual
+- Tabla de actividad reciente
+
+3. Módulo de clientes
+Pantalla con:
+- Tabla de clientes
+- Nombre
+- Teléfono / WhatsApp
+- Email
+- Puntos acumulados
+- Nivel
+- Última visita
+- Estado
+- Botón para ver perfil del cliente
+
+4. Perfil de cliente
+Debe mostrar:
+- Datos del cliente
+- Puntos disponibles
+- Historial de compras
+- Recompensas ganadas
+- Recompensas canjeadas
+- Referidos
+- Botón para enviar mensaje por WhatsApp
+
+5. Módulo de recompensas
+Pantalla para administrar:
+- Puntos
+- Cupones
+- Cashback
+- Sellos digitales
+- Regalos por cumpleaños
+- Recompensas por referidos
+- Membresías VIP
+
+6. Creador de campaña
+Formulario para crear campañas:
+- Nombre de campaña
+- Tipo de campaña
+- Segmento de clientes
+- Mensaje de WhatsApp
+- Fecha de inicio
+- Fecha de finalización
+- Recompensa asociada
+- Vista previa del mensaje
+
+7. Wallet digital
+Diseña una pantalla donde se vea una tarjeta digital tipo Apple Wallet / Google Wallet con:
+- Nombre del negocio
+- Nombre del cliente
+- Nivel del cliente
+- Puntos disponibles
+- Código QR
+- Botón “Agregar a Wallet”
+
+8. Módulo de industrias
+Crear tarjetas para:
+- Barberías
+- Cafeterías
+- Restaurantes
+- Salones de belleza
+- Dentistas
+- Gimnasios
+- Veterinarias
+- Talleres mecánicos
+Cada tarjeta debe mostrar qué beneficios aplica para esa industria.
+
+9. Configuración del negocio
+Pantalla para:
+- Nombre del negocio
+- Logo
+- Colores de marca
+- Sucursales
+- Usuarios
+- Roles
+- Integración con WhatsApp
+- Integración con sitio web
+- Integración con wallet digital
+
+10. Sidebar del dashboard
+Debe incluir:
+- Dashboard
+- Clientes
+- Recompensas
+- Campañas
+- Wallet
+- Referidos
+- WhatsApp
+- Industrias
+- Reportes
+- Configuración
