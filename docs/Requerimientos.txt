@@ -1,0 +1,89 @@
+NECESITO POR FAVOR QUE IMPLEMENTES TODO ESTO:
+
+1.- Lo que debe de contener y hacer el Dashboard de SuperAdmin(DUEÑOS) de IngresaX-Loop
+
+Lo que se debe poder hacer:
+
+a. Poder activar un negocio rápido.
+b. Tener la manera de poder explicar y que nuestros clientes entiendan el valor de la plataforma en minutos.
+c. Recoger feedback real.
+d. Iterar sobre uso real.
+e. Recibir tickets de preguntas, feedback y/o soporte de nuestros clientes.
+
+Lo que se debe poder ver en la Panel del Administrador:
+* ¿Cuántos clientes tenemos?
+* ¿Cuánto MRR tenemos?
+* ¿Quién no ha pagado?
+* ¿Quién está en trial?
+* ¿Qué módulos y/o microservicios usa cada cuenta?
+* ¿Qué tickets existen?
+* ¿Qué clientes están en riesgo?
+
+
+2.- Lo que debe de poder hacer y ver los clientes de IngresaX Loop en sus Dashboard (Clientes de IngresaX ósea negocios afiliados)
+
+ 
+Dueño del negocio
+
+Ejemplos:
+
+* Barbero
+* Quiropráctico
+* Restaurante
+* Gimnasio
+* Cafetería
+
+Objetivo:
+
+Hacer crecer su negocio.
+
+Preguntas:
+
+* ¿Cuántos clientes tengo?
+* ¿Cuántos volvieron?
+* ¿Cuánto dinero generó el programa?
+* ¿Qué campaña funcionó?
+* ¿Cómo envío una promoción?
+* ¿Qué recompensas están funcionando?
+* ¿Cuántos referidos llegaron?
+
+3.- Lo que debe de poder ver y hacer el EMPLEADO de los clientes de IngresaX, ósea empleados de los negocios:
+
+Empleado del negocio
+
+Ejemplos:
+
+* Recepcionista
+* Cajero
+* Barbero
+* Mesero
+* Asistente
+
+Objetivo:
+
+Operar.
+
+Preguntas:
+
+* ¿Cómo registro un cliente?
+* ¿Cómo escaneo QR?
+* ¿Cómo aplico una recompensa?
+* ¿Cómo verifico puntos?
+* ¿Cómo encuentro a un cliente?
+
+4.- Lo que deben de poder ver y hacer los clientes de los clientes de INGRESAX (ósea el cliente de las barberías, cafeterías, etc.):
+
+
+* Escanear el QR
+* Entrar al sistema
+* Registrarse
+* Usar los programas de recompensas para acumulación y canje de puntos.
+* Recibir recompensas
+* Consultar su wallet 
+* Invitar a sus amigos y/o conocidos a ser clientes del negocio para poder inscribirse al programa.
+
+
+NOTA: ESTO NO ES PARA SUSTITUIR LO QUE YA EXISTE, ES PARA AMPLIAR Y/O COMPLEMENTAR LO QUE YA EXISTE, PARA QUE LO TOMES EN CUENTA
+
+
+
