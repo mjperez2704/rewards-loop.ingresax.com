@@ -193,3 +193,25 @@ export const adminRoles = pgTable('admin_roles', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
+
+export const whatsappEvents = pgTable('whatsapp_events', {
+  id: text('id').primaryKey(),
+  eventType: text('eventType').notNull(),
+  sender: text('sender'),
+  payload: text('payload').notNull(),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+export const whatsappMessages = pgTable('whatsapp_messages', {
+  id: text('id').primaryKey(),
+  userId: text('userId').notNull(),
+  campaignId: text('campaignId'),
+  clientId: text('clientId'),
+  recipient: text('recipient').notNull(),
+  message: text('message').notNull(),
+  status: text('status').notNull().default('queued'),
+  providerMessageId: text('providerMessageId'),
+  error: text('error'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})

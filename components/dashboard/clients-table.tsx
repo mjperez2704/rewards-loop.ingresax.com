@@ -23,18 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import type { ClientRecord } from '@/lib/db/types'
 
-interface Client {
-  id: string
-  name: string
-  email: string
-  phone: string | null
-  status: string
-  loyaltyTier: string
-  totalPoints: number
-  createdAt: Date | string
-  lastVisit?: string
-}
+type Client = ClientRecord & { lastVisit?: string }
 
 const tierColors: Record<string, string> = {
   Plata: 'status-muted',
