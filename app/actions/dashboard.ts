@@ -52,6 +52,33 @@ export async function createClient(data: { name: string; email: string; phone?: 
   return { id }
 }
 
+export async function updateClient(id: string, data: {
+  name: string
+  email: string
+  phone?: string
+  loyaltyTier: string
+  status: string
+  totalPoints: number
+}) {
+  const userId = await getUserId()
+
+  await db
+    .update(clients)
+    .set({
+      name: data.name,
+      email: data.email,
+      phone: data.phone || null,
+      loyaltyTier: data.loyaltyTier,
+      status: data.status,
+      totalPoints: Math.max(0, Math.round(data.totalPoints || 0)),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(clients.id, id), eq(clients.userId, userId)))
+
+  revalidatePath('/dashboard/clients')
+  revalidatePath(`/dashboard/clients/${id}`)
+}
+
 export async function deleteClient(id: string) {
   const userId = await getUserId()
   await db.delete(clients).where(and(eq(clients.id, id), eq(clients.userId, userId)))
@@ -148,6 +175,180 @@ export async function createWallet(data: { clientId?: string; balance?: number }
   
   revalidatePath('/dashboard/wallet')
   return { id }
+}
+
+function revalidateClientOperations(clientId?: string) {
+  revalidatePath('/dashboard')
+  revalidatePath('/dashboard/operations')
+  revalidatePath('/dashboard/clients')
+  revalidatePath('/dashboard/wallet')
+  if (clientId) revalidatePath(`/dashboard/clients/${clientId}`)
+}
+
+export async function awardClientPoints(data: { clientId: string; amount: number; description?: string }) {
+  const userId = await getUserId()
+  const points = Math.round(Number(data.amount || 0))
+
+  if (!data.clientId) throw new Error('Selecciona un cliente.')
+  if (!Number.isFinite(points) || points <= 0) throw new Error('Los puntos deben ser mayores a cero.')
+
+  const updatedClient = await db.transaction(async (tx) => {
+    const [client] = await tx
+      .select()
+      .from(clients)
+      .where(and(eq(clients.id, data.clientId), eq(clients.userId, userId)))
+      .limit(1)
+
+    if (!client) throw new Error('Cliente no encontrado.')
+
+    let [wallet] = await tx
+      .select()
+      .from(wallets)
+      .where(and(eq(wallets.clientId, client.id), eq(wallets.userId, userId)))
+      .limit(1)
+
+    if (!wallet) {
+      const walletId = crypto.randomUUID()
+      const now = new Date()
+      const [createdWallet] = await tx
+        .insert(wallets)
+        .values({
+          id: walletId,
+          userId,
+          clientId: client.id,
+          balance: client.totalPoints,
+          currency: 'points',
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+      wallet = createdWallet
+    }
+
+    await tx
+      .update(clients)
+      .set({
+        totalPoints: sql`${clients.totalPoints} + ${points}`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(clients.id, client.id), eq(clients.userId, userId)))
+
+    await tx
+      .update(wallets)
+      .set({
+        balance: sql`${wallets.balance} + ${points}`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(wallets.id, wallet.id), eq(wallets.userId, userId)))
+
+    await tx.insert(transactions).values({
+      id: crypto.randomUUID(),
+      userId,
+      walletId: wallet.id,
+      amount: points,
+      type: 'credit',
+      description: data.description?.trim() || 'Puntos emitidos desde POS',
+      createdAt: new Date(),
+    })
+
+    const [nextClient] = await tx
+      .select()
+      .from(clients)
+      .where(and(eq(clients.id, client.id), eq(clients.userId, userId)))
+      .limit(1)
+
+    return nextClient
+  })
+
+  revalidateClientOperations(data.clientId)
+  return updatedClient
+}
+
+export async function redeemRewardForClient(data: { clientId: string; rewardId: string }) {
+  const userId = await getUserId()
+
+  if (!data.clientId) throw new Error('Selecciona un cliente.')
+  if (!data.rewardId) throw new Error('Selecciona una recompensa.')
+
+  const updatedClient = await db.transaction(async (tx) => {
+    const [client] = await tx
+      .select()
+      .from(clients)
+      .where(and(eq(clients.id, data.clientId), eq(clients.userId, userId)))
+      .limit(1)
+
+    if (!client) throw new Error('Cliente no encontrado.')
+
+    const [reward] = await tx
+      .select()
+      .from(rewards)
+      .where(and(eq(rewards.id, data.rewardId), eq(rewards.userId, userId)))
+      .limit(1)
+
+    if (!reward || reward.status !== 'active') throw new Error('Recompensa no disponible.')
+    if (client.totalPoints < reward.pointsRequired) throw new Error('El cliente no tiene puntos suficientes.')
+
+    let [wallet] = await tx
+      .select()
+      .from(wallets)
+      .where(and(eq(wallets.clientId, client.id), eq(wallets.userId, userId)))
+      .limit(1)
+
+    if (!wallet) {
+      const walletId = crypto.randomUUID()
+      const now = new Date()
+      const [createdWallet] = await tx
+        .insert(wallets)
+        .values({
+          id: walletId,
+          userId,
+          clientId: client.id,
+          balance: client.totalPoints,
+          currency: 'points',
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+      wallet = createdWallet
+    }
+
+    await tx
+      .update(clients)
+      .set({
+        totalPoints: sql`GREATEST(${clients.totalPoints} - ${reward.pointsRequired}, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(clients.id, client.id), eq(clients.userId, userId)))
+
+    await tx
+      .update(wallets)
+      .set({
+        balance: sql`GREATEST(${wallets.balance} - ${reward.pointsRequired}, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(wallets.id, wallet.id), eq(wallets.userId, userId)))
+
+    await tx.insert(transactions).values({
+      id: crypto.randomUUID(),
+      userId,
+      walletId: wallet.id,
+      amount: reward.pointsRequired,
+      type: 'debit',
+      description: `Canje POS: ${reward.title}`,
+      createdAt: new Date(),
+    })
+
+    const [nextClient] = await tx
+      .select()
+      .from(clients)
+      .where(and(eq(clients.id, client.id), eq(clients.userId, userId)))
+      .limit(1)
+
+    return nextClient
+  })
+
+  revalidateClientOperations(data.clientId)
+  return updatedClient
 }
 
 // Transactions

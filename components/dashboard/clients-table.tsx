@@ -1,11 +1,28 @@
 'use client'
 
 import Link from 'next/link'
-import { Eye, Mail, MessageCircle, Trash2 } from 'lucide-react'
-import { deleteClient } from '@/app/actions/dashboard'
+import { Eye, Mail, MessageCircle, Pencil, Trash2 } from 'lucide-react'
+import { useState, useTransition } from 'react'
+import { deleteClient, updateClient } from '@/app/actions/dashboard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface Client {
   id: string
@@ -36,8 +53,27 @@ function formatDate(date: Date | string | undefined) {
 }
 
 export function ClientsTable({ clients }: { clients: Client[] }) {
+  const [editingClient, setEditingClient] = useState<Client | null>(null)
+  const [isPending, startTransition] = useTransition()
+
   const handleDelete = async (id: string) => {
     await deleteClient(id)
+  }
+
+  const saveClient = () => {
+    if (!editingClient) return
+
+    startTransition(async () => {
+      await updateClient(editingClient.id, {
+        name: editingClient.name,
+        email: editingClient.email,
+        phone: editingClient.phone || undefined,
+        loyaltyTier: editingClient.loyaltyTier,
+        status: editingClient.status,
+        totalPoints: editingClient.totalPoints,
+      })
+      setEditingClient(null)
+    })
   }
 
   return (
@@ -119,6 +155,10 @@ export function ClientsTable({ clients }: { clients: Client[] }) {
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" className="rounded-lg bg-background" onClick={() => setEditingClient(client)}>
+                      <Pencil className="size-4" />
+                      Editar
+                    </Button>
                     <Button asChild variant="outline" size="sm" className="rounded-lg bg-background">
                       <Link href={`/dashboard/clients/${client.id}`}>
                         <Eye className="size-4" />
@@ -141,6 +181,68 @@ export function ClientsTable({ clients }: { clients: Client[] }) {
         </table>
       </div>
       )}
+      <Dialog open={Boolean(editingClient)} onOpenChange={(open) => !open && setEditingClient(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Editar cliente</DialogTitle>
+          </DialogHeader>
+          {editingClient && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2 md:col-span-2">
+                <Label>Nombre completo</Label>
+                <Input value={editingClient.name} onChange={(event) => setEditingClient({ ...editingClient, name: event.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Correo electrónico</Label>
+                <Input type="email" value={editingClient.email} onChange={(event) => setEditingClient({ ...editingClient, email: event.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Teléfono</Label>
+                <Input value={editingClient.phone ?? ''} onChange={(event) => setEditingClient({ ...editingClient, phone: event.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Nivel</Label>
+                <Select value={editingClient.loyaltyTier} onValueChange={(value) => setEditingClient({ ...editingClient, loyaltyTier: value })}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Plata">Plata</SelectItem>
+                    <SelectItem value="Oro">Oro</SelectItem>
+                    <SelectItem value="Platino">Platino</SelectItem>
+                    <SelectItem value="Diamante">Diamante</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Estado</Label>
+                <Select value={editingClient.status} onValueChange={(value) => setEditingClient({ ...editingClient, status: value })}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Activo</SelectItem>
+                    <SelectItem value="inactive">Inactivo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Puntos acumulados</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={editingClient.totalPoints}
+                  onChange={(event) => setEditingClient({ ...editingClient, totalPoints: Number(event.target.value) })}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingClient(null)}>Cancelar</Button>
+            <Button onClick={saveClient} disabled={isPending}>Guardar cambios</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

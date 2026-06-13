@@ -13,6 +13,7 @@ import {
   clients,
   feedbackItems,
   rewards,
+  servicePlans,
   supportTickets,
   transactions,
   user,
@@ -21,6 +22,7 @@ import {
   DEFAULT_SERVICE_ENTITLEMENTS,
   SERVICE_MODULES,
 } from '@/lib/service-modules'
+import { getAdminAccessEmails } from '@/lib/admin-access'
 import type {
   ServiceEntitlements,
   ServiceModuleKey,
@@ -33,7 +35,7 @@ export type AdminBusinessAccount = {
   businessName: string
   ownerName: string
   ownerEmail: string
-  plan: 'Starter' | 'Growth' | 'Scale' | 'Enterprise'
+  plan: string
   status: SubscriptionStatus
   mrr: number
   users: number
@@ -63,6 +65,16 @@ export type AdminBusinessAccount = {
   moduleUsage: Partial<Record<ServiceModuleKey, string>>
 }
 
+export type BusinessAccountInput = {
+  id?: string
+  businessName: string
+  ownerName: string
+  ownerEmail: string
+  plan: string
+  status: SubscriptionStatus
+  locations: number
+}
+
 export type AdminSupportTicket = {
   id: string
   account: string
@@ -81,7 +93,7 @@ export type AdminFeedbackItem = {
   status: string
 }
 
-const PLAN_LIMITS: Record<AdminBusinessAccount['plan'], AdminBusinessAccount['limits']> = {
+const PLAN_LIMITS: Record<string, AdminBusinessAccount['limits']> = {
   Starter: {
     customers: { used: 0, limit: 1000 },
     campaigns: { used: 0, limit: 5 },
@@ -118,18 +130,18 @@ function parseOwnerAndBusiness(name?: string | null) {
   }
 }
 
-function normalizePlan(value: string): AdminBusinessAccount['plan'] {
-  if (value === 'Growth' || value === 'Scale' || value === 'Enterprise') return value
-  return 'Starter'
-}
-
 function normalizeStatus(value: string): SubscriptionStatus {
   if (value === 'trialing' || value === 'past_due' || value === 'paused') return value
   return 'active'
 }
 
-function cloneLimits(plan: AdminBusinessAccount['plan'], customers: number, campaignsCount: number) {
-  const base = PLAN_LIMITS[plan]
+function cloneLimits(
+  plan: string,
+  customers: number,
+  campaignsCount: number,
+  planLimits?: AdminBusinessAccount['limits'],
+) {
+  const base = planLimits ?? PLAN_LIMITS[plan] ?? PLAN_LIMITS.Starter
 
   return {
     customers: { ...base.customers, used: customers },
@@ -137,6 +149,24 @@ function cloneLimits(plan: AdminBusinessAccount['plan'], customers: number, camp
     whatsapp: { ...base.whatsapp, used: 0 },
     users: { ...base.users, used: 1 },
   }
+}
+
+async function getDefaultServiceEntitlements(planId: string): Promise<ServiceEntitlements> {
+  await ensureProductionAccountTables()
+
+  const [plan] = await db
+    .select({ includedModules: servicePlans.includedModules })
+    .from(servicePlans)
+    .where(eq(servicePlans.id, planId))
+    .limit(1)
+
+  if (!plan?.includedModules) return { ...DEFAULT_SERVICE_ENTITLEMENTS }
+
+  const included = new Set(plan.includedModules.split(',').map((item) => item.trim()).filter(Boolean))
+  return SERVICE_MODULES.reduce((acc, module) => {
+    acc[module.key] = module.key === 'dashboard' || included.has(module.key)
+    return acc
+  }, {} as ServiceEntitlements)
 }
 
 function ageFromDate(date: Date) {
@@ -214,10 +244,37 @@ export async function ensureProductionAccountTables() {
       "updatedAt" timestamp NOT NULL DEFAULT now()
     )
   `)
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "service_plans" (
+      "id" text PRIMARY KEY,
+      "name" text NOT NULL,
+      "priceMonthly" integer NOT NULL DEFAULT 0,
+      "currency" text NOT NULL DEFAULT 'USD',
+      "description" text,
+      "includedModules" text NOT NULL DEFAULT '',
+      "customerLimit" integer NOT NULL DEFAULT 1000,
+      "campaignLimit" integer NOT NULL DEFAULT 5,
+      "whatsappLimit" integer NOT NULL DEFAULT 5000,
+      "userLimit" integer NOT NULL DEFAULT 3,
+      "status" text NOT NULL DEFAULT 'active',
+      "createdAt" timestamp NOT NULL DEFAULT now(),
+      "updatedAt" timestamp NOT NULL DEFAULT now()
+    )
+  `)
 }
 
 export async function syncBusinessAccountsFromUsers() {
   await ensureProductionAccountTables()
+
+  const adminEmails = await getAdminAccessEmails()
+
+  if (adminEmails.length > 0) {
+    await db.execute(sql`
+      DELETE FROM "business_accounts"
+      WHERE lower("ownerEmail") IN (${sql.join(adminEmails.map((email) => sql`${email}`), sql`, `)})
+    `)
+  }
 
   await db.execute(sql`
     INSERT INTO "business_accounts" (
@@ -250,6 +307,9 @@ export async function syncBusinessAccountsFromUsers() {
       SELECT 1 FROM "business_accounts"
       WHERE "business_accounts"."ownerUserId" = "user"."id"
     )
+    ${adminEmails.length > 0
+      ? sql`AND lower("user"."email") NOT IN (${sql.join(adminEmails.map((email) => sql`${email}`), sql`, `)})`
+      : sql``}
   `)
 }
 
@@ -281,16 +341,19 @@ export async function getAdminAccounts(): Promise<AdminBusinessAccount[]> {
   const rewardsByUser = byUser(rewardRows)
   const campaignsByUser = byUser(campaignRows)
   const transactionsByUser = byUser(transactionRows)
+  const planRows = await db.select().from(servicePlans)
+  const plansById = new Map(planRows.map((plan) => [plan.id, plan]))
 
-  return accountRows.map((account) => {
-    const plan = normalizePlan(account.plan)
+  return Promise.all(accountRows.map(async (account) => {
+    const plan = account.plan || 'Starter'
     const status = normalizeStatus(account.status)
+    const planConfig = plansById.get(plan)
     const customers = clientsByUser.get(account.ownerUserId)?.count ?? 0
     const rewardsIssued = rewardsByUser.get(account.ownerUserId)?.count ?? 0
     const campaignsCount = campaignsByUser.get(account.ownerUserId)?.count ?? 0
     const transactionCount = transactionsByUser.get(account.ownerUserId)?.count ?? 0
     const points = Math.abs(transactionsByUser.get(account.ownerUserId)?.points ?? 0)
-    const serviceEntitlements = { ...DEFAULT_SERVICE_ENTITLEMENTS }
+    const serviceEntitlements = await getDefaultServiceEntitlements(plan)
 
     entitlementsRows
       .filter((row) => row.accountId === account.id)
@@ -335,7 +398,19 @@ export async function getAdminAccounts(): Promise<AdminBusinessAccount[]> {
         reasons,
         lastActivity,
       },
-      limits: cloneLimits(plan, customers, campaignsCount),
+      limits: cloneLimits(
+        plan,
+        customers,
+        campaignsCount,
+        planConfig
+          ? {
+              customers: { used: customers, limit: planConfig.customerLimit },
+              campaigns: { used: campaignsCount, limit: planConfig.campaignLimit },
+              whatsapp: { used: 0, limit: planConfig.whatsappLimit },
+              users: { used: 1, limit: planConfig.userLimit },
+            }
+          : undefined,
+      ),
       moduleUsage: {
         clients: `${customers.toLocaleString()} perfiles`,
         rewards: `${rewardsIssued.toLocaleString()} recompensas`,
@@ -344,7 +419,7 @@ export async function getAdminAccounts(): Promise<AdminBusinessAccount[]> {
         operations: `${transactionCount.toLocaleString()} transacciones`,
       },
     }
-  })
+  }))
 }
 
 export async function getAdminOverviewData() {
@@ -396,6 +471,118 @@ export async function getAdminOverviewData() {
   }
 }
 
+export async function upsertBusinessAccount(input: BusinessAccountInput) {
+  await requireAdminAccess()
+  await ensureProductionAccountTables()
+
+  const businessName = input.businessName.trim()
+  const ownerName = input.ownerName.trim()
+  const ownerEmail = input.ownerEmail.trim().toLowerCase()
+  const adminEmails = await getAdminAccessEmails()
+
+  if (!businessName || !ownerName || !ownerEmail || adminEmails.includes(ownerEmail)) {
+    throw new Error('Invalid business account')
+  }
+
+  const [plan] = await db.select().from(servicePlans).where(eq(servicePlans.id, input.plan)).limit(1)
+  const now = new Date()
+  let ownerUserId: string
+
+  const [existingUser] = await db.select().from(user).where(eq(user.email, ownerEmail)).limit(1)
+
+  if (existingUser) {
+    ownerUserId = existingUser.id
+    await db
+      .update(user)
+      .set({
+        name: `${ownerName} (${businessName})`,
+        updatedAt: now,
+      })
+      .where(eq(user.id, existingUser.id))
+  } else {
+    ownerUserId = crypto.randomUUID()
+    await db.insert(user).values({
+      id: ownerUserId,
+      name: `${ownerName} (${businessName})`,
+      email: ownerEmail,
+      emailVerified: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+  }
+
+  const accountId = input.id || crypto.randomUUID()
+
+  await db
+    .insert(businessAccounts)
+    .values({
+      id: accountId,
+      ownerUserId,
+      businessName,
+      ownerName,
+      ownerEmail,
+      plan: input.plan,
+      status: input.status,
+      mrr: plan?.priceMonthly ?? 0,
+      locations: Math.max(1, Math.round(input.locations || 1)),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: businessAccounts.id,
+      set: {
+        ownerUserId,
+        businessName,
+        ownerName,
+        ownerEmail,
+        plan: input.plan,
+        status: input.status,
+        mrr: plan?.priceMonthly ?? 0,
+        locations: Math.max(1, Math.round(input.locations || 1)),
+        updatedAt: now,
+      },
+    })
+
+  if (!input.id && plan?.includedModules) {
+    const included = new Set(plan.includedModules.split(',').map((item) => item.trim()).filter(Boolean))
+    for (const module of SERVICE_MODULES) {
+      const enabled = module.key === 'dashboard' || included.has(module.key)
+      await db.execute(sql`
+        INSERT INTO "business_module_entitlements" (
+          "id",
+          "accountId",
+          "moduleKey",
+          "enabled",
+          "createdAt",
+          "updatedAt"
+        )
+        VALUES (${crypto.randomUUID()}, ${accountId}, ${module.key}, ${enabled}, now(), now())
+        ON CONFLICT ("accountId", "moduleKey")
+        DO UPDATE SET "enabled" = ${enabled}, "updatedAt" = now()
+      `)
+    }
+  }
+
+  revalidatePath('/admin')
+  revalidatePath('/admin/accounts')
+  revalidatePath('/admin/services')
+  revalidatePath('/admin/plans')
+  return getAdminAccounts()
+}
+
+export async function deleteBusinessAccount(id: string) {
+  await requireAdminAccess()
+  await ensureProductionAccountTables()
+
+  await db.delete(businessAccounts).where(eq(businessAccounts.id, id))
+
+  revalidatePath('/admin')
+  revalidatePath('/admin/accounts')
+  revalidatePath('/admin/services')
+  revalidatePath('/admin/plans')
+  return getAdminAccounts()
+}
+
 export async function getBusinessAccountForUser(email: string) {
   await syncBusinessAccountsFromUsers()
 
@@ -412,11 +599,11 @@ export async function getBusinessAccountForUser(email: string) {
     return {
       id: authUser?.id ?? email,
       businessName: parsed.businessName,
-      serviceEntitlements: DEFAULT_SERVICE_ENTITLEMENTS,
+      serviceEntitlements: await getDefaultServiceEntitlements('Starter'),
     }
   }
 
-  const entitlements = { ...DEFAULT_SERVICE_ENTITLEMENTS }
+  const entitlements = await getDefaultServiceEntitlements(account.plan || 'Starter')
   const rows = await db
     .select()
     .from(businessModuleEntitlements)

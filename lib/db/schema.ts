@@ -167,3 +167,29 @@ export const feedbackItems = pgTable('feedback_items', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
+
+export const servicePlans = pgTable('service_plans', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  priceMonthly: integer('priceMonthly').notNull().default(0),
+  currency: text('currency').notNull().default('USD'),
+  description: text('description'),
+  includedModules: text('includedModules').notNull().default(''),
+  customerLimit: integer('customerLimit').notNull().default(1000),
+  campaignLimit: integer('campaignLimit').notNull().default(5),
+  whatsappLimit: integer('whatsappLimit').notNull().default(5000),
+  userLimit: integer('userLimit').notNull().default(3),
+  status: text('status').notNull().default('active'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export const adminRoles = pgTable('admin_roles', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  permissions: text('permissions').notNull(),
+  locked: boolean('locked').notNull().default(false),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
