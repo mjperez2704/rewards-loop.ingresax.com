@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { BadgeCheck, Gift, QrCode, Search, UserPlus, WalletCards } from 'lucide-react'
 import {
   awardClientPoints,
@@ -19,31 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import type { ClientRecord, RewardRecord, WalletRecord } from '@/lib/db/types'
 
-type ClientRecord = {
-  id: string
-  userId: string
-  name: string
-  email: string
-  phone: string | null
-  status: string
-  loyaltyTier: string
-  totalPoints: number
-  createdAt: Date
-  updatedAt: Date
+type BarcodeDetectorResult = { rawValue?: string }
+type BarcodeDetectorInstance = {
+  detect: (source: HTMLVideoElement) => Promise<BarcodeDetectorResult[]>
 }
-
-type RewardRecord = {
-  id: string
-  userId: string
-  title: string
-  description: string | null
-  pointsRequired: number
-  category: string
-  status: string
-  createdAt: Date
-  updatedAt: Date
-}
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance
 
 const operationIcons = [UserPlus, QrCode, Gift, WalletCards, Search]
 const employeeOperations = [
@@ -65,11 +47,14 @@ function defaultClientForm() {
 export function EmployeeOperationsPage({
   clients,
   rewards,
+  wallets,
 }: {
   clients: ClientRecord[]
   rewards: RewardRecord[]
+  wallets: WalletRecord[]
 }) {
   const [clientRecords, setClientRecords] = useState(clients)
+  const [walletRecords, setWalletRecords] = useState(wallets)
   const [query, setQuery] = useState('')
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id ?? '')
   const [clientForm, setClientForm] = useState(defaultClientForm)
@@ -78,6 +63,10 @@ export function EmployeeOperationsPage({
   const [selectedRewardId, setSelectedRewardId] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [scannerActive, setScannerActive] = useState(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const scannerStreamRef = useRef<MediaStream | null>(null)
+  const scannerFrameRef = useRef<number | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const activeRewards = useMemo(
@@ -89,10 +78,18 @@ export function EmployeeOperationsPage({
     if (!normalized) return clientRecords
 
     return clientRecords.filter((client) => {
-      const search = `${client.id} ${client.name} ${client.email} ${client.phone ?? ''}`.toLowerCase()
+      const wallet = walletRecords.find((item) => item.clientId === client.id)
+      const search = [
+        client.id,
+        client.name,
+        client.email,
+        client.phone ?? '',
+        wallet?.id ?? '',
+        wallet?.id ? `INGRESAX:WALLET:${wallet.id}` : '',
+      ].join(' ').toLowerCase()
       return search.includes(normalized)
     })
-  }, [clientRecords, query])
+  }, [clientRecords, query, walletRecords])
   const selectedClient = clientRecords.find((client) => client.id === selectedClientId) ?? filteredClients[0]
   const selectedReward = activeRewards.find((reward) => reward.id === selectedRewardId)
   const totalPoints = clientRecords.reduce((sum, client) => sum + client.totalPoints, 0)
@@ -108,6 +105,14 @@ export function EmployeeOperationsPage({
   }, [clients])
 
   useEffect(() => {
+    setWalletRecords(wallets)
+  }, [wallets])
+
+  useEffect(() => {
+    return () => stopScanner()
+  }, [])
+
+  useEffect(() => {
     if (!selectedRewardId && activeRewards[0]) {
       setSelectedRewardId(activeRewards[0].id)
     }
@@ -121,6 +126,65 @@ export function EmployeeOperationsPage({
     if (!client) return
     setClientRecords((current) => current.map((item) => (item.id === client.id ? client : item)))
     setSelectedClientId(client.id)
+  }
+
+  const stopScanner = () => {
+    if (scannerFrameRef.current) {
+      cancelAnimationFrame(scannerFrameRef.current)
+      scannerFrameRef.current = null
+    }
+    scannerStreamRef.current?.getTracks().forEach((track) => track.stop())
+    scannerStreamRef.current = null
+    setScannerActive(false)
+  }
+
+  const startScanner = async () => {
+    setMessage('')
+    setError('')
+
+    const Detector = (window as typeof window & {
+      BarcodeDetector?: BarcodeDetectorConstructor
+    }).BarcodeDetector
+
+    if (!Detector) {
+      setError('Este navegador no soporta escaneo QR por cámara. Usa la búsqueda manual.')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false,
+      })
+      scannerStreamRef.current = stream
+      setScannerActive(true)
+
+      if (!videoRef.current) return
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
+
+      const detector = new Detector({ formats: ['qr_code'] })
+      const scan = async () => {
+        const video = videoRef.current
+        if (!video || !scannerStreamRef.current) return
+
+        const codes = await detector.detect(video)
+        const rawValue = codes[0]?.rawValue?.trim()
+        if (rawValue) {
+          setQuery(rawValue)
+          setMessage('QR leído correctamente.')
+          stopScanner()
+          return
+        }
+
+        scannerFrameRef.current = requestAnimationFrame(scan)
+      }
+
+      scannerFrameRef.current = requestAnimationFrame(scan)
+    } catch (caught) {
+      stopScanner()
+      setError(caught instanceof Error ? caught.message : 'No se pudo iniciar la cámara.')
+    }
   }
 
   const registerClient = () => {
@@ -208,9 +272,9 @@ export function EmployeeOperationsPage({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setQuery(selectedClient?.id ?? '')} disabled={!selectedClient}>
+          <Button onClick={scannerActive ? stopScanner : startScanner}>
             <QrCode className="size-4" />
-            Usar ID/QR
+            {scannerActive ? 'Detener cámara' : 'Escanear QR'}
           </Button>
           <Button variant="outline" onClick={() => document.getElementById('quick-client-name')?.focus()}>
             <UserPlus className="size-4" />
@@ -239,6 +303,15 @@ export function EmployeeOperationsPage({
           {error || message}
         </div>
       )}
+
+      <div className={scannerActive ? 'block' : 'hidden'}>
+        <Card className="premium-card overflow-hidden p-0">
+          <div className="border-b border-border px-5 py-3">
+            <p className="text-sm font-semibold">Lector QR de cámara</p>
+          </div>
+          <video ref={videoRef} className="aspect-video w-full bg-black object-cover" muted playsInline />
+        </Card>
+      </div>
 
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-6">
